@@ -23,31 +23,36 @@ export function getTorrentEngine() {
 export async function getOrAddTorrent(infoHash) {
   const hash = infoHash.toLowerCase();
   const existing = client.get(hash);
-  if (existing) {
+  if (existing && existing.files && existing.files.length) {
     return existing;
   }
 
-  // Construct magnet URI with boosted trackers
-  const trackerParams = TIER1_TRACKERS.map(t => `&tr=${encodeURIComponent(t)}`).join('');
-  const magnetURI = `magnet:?xt=urn:btih:${hash}${trackerParams}`;
-
-  return new Promise((resolve, reject) => {
-    console.log(`WebTorrent adding torrent ${hash} with ${TIER1_TRACKERS.length} boosted trackers...`);
+  return new Promise((resolve) => {
+    console.log(`WebTorrent adding torrent ${hash} with ${TIER1_TRACKERS.length} announce trackers...`);
     
     const timeout = setTimeout(() => {
       const torrent = client.get(hash);
-      if (torrent && torrent.files.length) {
+      if (torrent && torrent.files && torrent.files.length) {
         resolve(torrent);
       } else {
-        console.warn(`WebTorrent metadata timeout for ${hash}, still waiting in background`);
-        resolve(torrent || null);
+        console.warn(`WebTorrent metadata timeout for ${hash}`);
+        resolve(null);
       }
-    }, 25000); // 25s metadata wait
+    }, 15000);
 
-    client.add(magnetURI, { destroyStoreOnDestroy: true }, (torrent) => {
+    const torrent = client.add(hash, {
+      announce: TIER1_TRACKERS,
+      destroyStoreOnDestroy: true
+    }, (t) => {
       clearTimeout(timeout);
-      console.log(`WebTorrent metadata ready for: ${torrent.name} (${torrent.files.length} files)`);
-      resolve(torrent);
+      console.log(`WebTorrent metadata ready for: ${t.name} (${t.files.length} files)`);
+      resolve(t);
+    });
+
+    torrent.on('error', (err) => {
+      console.error('Torrent error:', err?.message || err);
+      clearTimeout(timeout);
+      resolve(null);
     });
   });
 }

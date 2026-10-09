@@ -45,7 +45,7 @@ export default function sortStreams(streams, config, type) {
 }
 
 function _sortStreams(streams, config, type) {
-  const sort = config?.sort?.toLowerCase() || undefined;
+  const sort = config?.sort?.toLowerCase() || SortOptions.options.size.key;
   const limit = /^[1-9][0-9]*$/.test(config.limit) && parseInt(config.limit) || undefined;
   const sortedStreams = sortBySeeders(streams, config, type);
   if (sort === SortOptions.options.seeders.key) {

@@ -80,13 +80,32 @@ export function getServiceAccountPath() {
   return null;
 }
 
+export function parseServiceAccountCredentials(raw) {
+  if (!raw) return null;
+  if (typeof raw === 'object') return raw;
+  try {
+    return JSON.parse(raw);
+  } catch (err) {
+    try {
+      const fixed = raw.replace(/\r?\n/g, '\\n');
+      return JSON.parse(fixed);
+    } catch (_) {}
+    try {
+      const b64 = Buffer.from(raw, 'base64').toString('utf8');
+      return JSON.parse(b64);
+    } catch (_) {}
+  }
+  return null;
+}
+
 export function getDriveClient(apiKey) {
   // Prefer Service Account for lifetime permanent access (zero token expiration!)
   const saPath = getServiceAccountPath();
-  if (saPath || process.env.SERVICE_ACCOUNT_KEY) {
+  const parsedCreds = parseServiceAccountCredentials(process.env.SERVICE_ACCOUNT_KEY);
+  if (saPath || parsedCreds) {
     const auth = new google.auth.GoogleAuth({
-      keyFile: saPath || undefined,
-      credentials: process.env.SERVICE_ACCOUNT_KEY ? JSON.parse(process.env.SERVICE_ACCOUNT_KEY) : undefined,
+      keyFile: (!parsedCreds && saPath) ? saPath : undefined,
+      credentials: parsedCreds || undefined,
       scopes: ['https://www.googleapis.com/auth/drive']
     });
     const drive = google.drive({ version: 'v3', auth });

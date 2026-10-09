@@ -355,24 +355,40 @@ router.get('/gdrive/status', async (req, res) => {
 
 // Diagnostic Scraper Debug Route
 router.get('/debug/test-fetch', async (req, res) => {
-  try {
+  const urlObj = new URL(req.url, `http://${req.headers.host}`);
+  const target = urlObj.searchParams.get('url');
+  const mirrors = target ? [target] : [
+    'https://torrentio.notprod.fyi/stream/movie/tt10872600.json',
+    'https://torrentio.withoutthefuss.dpdns.org/stream/movie/tt10872600.json',
+    'https://torrentio.strem.fun/stream/movie/tt10872600.json'
+  ];
+  const results = [];
+  for (const m of mirrors) {
     const t0 = Date.now();
-    const r = await fetch('https://torrentio.strem.fun/stream/movie/tt0111161.json', {
-      headers: {
-        'User-Agent': 'Stremio/4.4.168',
-        'Accept': 'application/json'
-      },
-      signal: AbortSignal.timeout(8000)
-    });
-    const status = r.status;
-    const body = await r.text();
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ status, timeMs: Date.now() - t0, bodySnippet: body.slice(0, 300) }));
-  } catch (e) {
-    res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify({ error: e.message, stack: e.stack }));
+    try {
+      const r = await fetch(m, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'application/json'
+        },
+        signal: AbortSignal.timeout(8000),
+        redirect: 'follow'
+      });
+      const text = await r.text();
+      let streamCount = 0;
+      try {
+        const json = JSON.parse(text);
+        streamCount = json?.streams?.length || 0;
+      } catch (_) {}
+      results.push({ url: m, status: r.status, streamCount, ms: Date.now() - t0, snippet: text.slice(0, 150) });
+    } catch (e) {
+      results.push({ url: m, error: e.message, ms: Date.now() - t0 });
+    }
   }
+  res.setHeader('Content-Type', 'application/json');
+  res.end(JSON.stringify(results, null, 2));
 });
+
 
 
 // Initiate Google OAuth Flow

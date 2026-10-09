@@ -19,6 +19,7 @@
     "cacheable": "^1.8.10",
     "cors": "^2.8.5",
     "debrid-link-api": "^1.1.1",
+    "dotenv": "^18.0.6",
     "express-rate-limit": "^8.2.1",
     "googleapis": "^185.0.0",
     "magnet-uri": "^6.2.0",

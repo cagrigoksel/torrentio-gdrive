@@ -1,4 +1,5 @@
 import Router from 'router';
+import fs from 'fs';
 import cors from 'cors';
 import rateLimit from "express-rate-limit";
 import requestIp from 'request-ip';
@@ -279,6 +280,16 @@ router.get('/oauth/callback', async (req, res) => {
     const oauth2Client = new google.auth.OAuth2(clientId, clientSecret, redirectUri);
     const { tokens } = await oauth2Client.getToken(code);
     const refreshToken = tokens.refresh_token;
+
+    if (refreshToken) {
+      process.env.GDRIVE_REFRESH_TOKEN = refreshToken;
+      try {
+        fs.appendFileSync('.env', `\nGDRIVE_REFRESH_TOKEN=${refreshToken}\n`);
+        console.log('Saved GDRIVE_REFRESH_TOKEN to .env successfully!');
+      } catch (e) {
+        console.warn('Could not write token to .env:', e?.message || e);
+      }
+    }
 
     const tokenPayload = Buffer.from(JSON.stringify({
       clientId,

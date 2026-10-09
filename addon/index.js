@@ -29,5 +29,12 @@ async function shutdown(signal) {
   process.exit(0);
 }
 
+process.on('uncaughtException', (err) => {
+  console.warn('Uncaught exception (prevented crash):', err?.message || err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.warn('Unhandled rejection (prevented crash):', reason?.message || reason);
+});
+
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 process.on('SIGINT', () => shutdown('SIGINT'));

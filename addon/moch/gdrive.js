@@ -1,8 +1,13 @@
 import { google } from 'googleapis';
 import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { streamFilename, BadTokenError, AccessDeniedError, NotFoundError } from './mochHelper.js';
 import { Type } from '../lib/types.js';
 import { isVideo } from '../lib/extension.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const KEY = 'gdrive';
 const STREMIO_FOLDER_NAME = 'Stremio';
@@ -58,11 +63,29 @@ export function parseCredentials(apiKey) {
   };
 }
 
+export function getServiceAccountPath() {
+  const candidates = [
+    process.env.SERVICE_ACCOUNT_KEY_PATH,
+    './service_account.json',
+    './addon/service_account.json',
+    path.join(__dirname, '../service_account.json'),
+    path.join(__dirname, '../../service_account.json'),
+    path.resolve(process.cwd(), 'service_account.json'),
+    path.resolve(process.cwd(), 'addon/service_account.json')
+  ].filter(Boolean);
+
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
 export function getDriveClient(apiKey) {
   // If service_account.json exists or is in env, prefer Service Account for lifetime permanent access!
-  if (fs.existsSync('service_account.json') || process.env.SERVICE_ACCOUNT_KEY) {
+  const saPath = getServiceAccountPath();
+  if (saPath || process.env.SERVICE_ACCOUNT_KEY) {
     const auth = new google.auth.GoogleAuth({
-      keyFile: fs.existsSync('service_account.json') ? 'service_account.json' : undefined,
+      keyFile: saPath || undefined,
       credentials: process.env.SERVICE_ACCOUNT_KEY ? JSON.parse(process.env.SERVICE_ACCOUNT_KEY) : undefined,
       scopes: ['https://www.googleapis.com/auth/drive']
     });
@@ -265,7 +288,8 @@ export async function resolve({ ip, apiKey, infoHash, cachedEntryInfo, fileIndex
     console.warn('Could not check GDrive cache in resolve:', e?.message || e);
   }
 
-  const safeFilename = encodeURIComponent(cachedEntryInfo || 'video.mkv');
+  const cleanFilename = (cachedEntryInfo || 'video.mp4').split('/').pop().replace(/[^\w\.\-\+]/g, '_');
+  const safeFilename = encodeURIComponent(cleanFilename);
   const safeApiKey = encodeURIComponent(apiKey);
 
   if (cachedFile) {

@@ -138,7 +138,7 @@ router.get('/resolve/:moch/:apiKey/:infoHash/:cachedEntryInfo/:fileIndex{/:filen
 });
 
 // Google Drive Cached Direct Range Stream (HTTP 206)
-router.get('/gdrive/stream/:apiKey/:fileId{/:filename}', async (req, res) => {
+const handleGdriveStream = async (req, res) => {
   const { apiKey, fileId } = req.params;
   try {
     const { drive } = gdrive.getDriveClient(decodeURIComponent(apiKey));
@@ -146,7 +146,8 @@ router.get('/gdrive/stream/:apiKey/:fileId{/:filename}', async (req, res) => {
 
     const meta = await drive.files.get({
       fileId,
-      fields: 'id, name, size, mimeType'
+      fields: 'id, name, size, mimeType',
+      supportsAllDrives: true
     });
 
     const fileSize = parseInt(meta.data.size, 10);
@@ -162,36 +163,73 @@ router.get('/gdrive/stream/:apiKey/:fileId{/:filename}', async (req, res) => {
         'Content-Range': `bytes ${start}-${end}/${fileSize}`,
         'Accept-Ranges': 'bytes',
         'Content-Length': chunksize,
-        'Content-Type': mimeType
+        'Content-Type': mimeType,
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'no-cache, no-store'
       });
 
+      if (req.method === 'HEAD') {
+        res.end();
+        return;
+      }
+
       const response = await drive.files.get(
-        { fileId, alt: 'media' },
+        { fileId, alt: 'media', supportsAllDrives: true },
         { responseType: 'stream', headers: { Range: `bytes=${start}-${end}` } }
       );
-      response.data.pipe(res);
+
+      const stream = response.data;
+      stream.on('error', (err) => {
+        // Normal client abort / seek
+      });
+      res.on('close', () => {
+        try { stream.destroy(); } catch (e) {}
+      });
+      stream.pipe(res);
     } else {
       res.writeHead(200, {
         'Content-Length': fileSize,
         'Content-Type': mimeType,
-        'Accept-Ranges': 'bytes'
+        'Accept-Ranges': 'bytes',
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'no-cache, no-store'
       });
 
+      if (req.method === 'HEAD') {
+        res.end();
+        return;
+      }
+
       const response = await drive.files.get(
-        { fileId, alt: 'media' },
+        { fileId, alt: 'media', supportsAllDrives: true },
         { responseType: 'stream' }
       );
-      response.data.pipe(res);
+
+      const stream = response.data;
+      stream.on('error', (err) => {
+        // Normal client abort / seek
+      });
+      res.on('close', () => {
+        try { stream.destroy(); } catch (e) {}
+      });
+      stream.pipe(res);
     }
   } catch (err) {
     console.error('GDrive stream error:', err?.message || err);
-    res.statusCode = 500;
-    res.end('Stream error: ' + (err?.message || err));
+    if (!res.headersSent) {
+      res.statusCode = 500;
+      res.end('Stream error: ' + (err?.message || err));
+    }
   }
-});
+};
+
+router.get('/gdrive/stream/:apiKey/:fileId', handleGdriveStream);
+router.get('/gdrive/stream/:apiKey/:fileId/:filename', handleGdriveStream);
+router.head('/gdrive/stream/:apiKey/:fileId', handleGdriveStream);
+router.head('/gdrive/stream/:apiKey/:fileId/:filename', handleGdriveStream);
 
 // Sequential WebTorrent Stream + Google Drive Pipe
-router.get('/gdrive/stream-torrent/:apiKey/:infoHash/:fileIndex{/:filename}', async (req, res) => {
+const handleTorrentStream = async (req, res) => {
   const { apiKey, infoHash, fileIndex } = req.params;
   try {
     const torrent = await getOrAddTorrent(infoHash);
@@ -232,27 +270,60 @@ router.get('/gdrive/stream-torrent/:apiKey/:infoHash/:fileIndex{/:filename}', as
         'Content-Range': `bytes ${start}-${end}/${fileSize}`,
         'Accept-Ranges': 'bytes',
         'Content-Length': chunksize,
-        'Content-Type': contentType
+        'Content-Type': contentType,
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'no-cache, no-store'
       });
 
+      if (req.method === 'HEAD') {
+        res.end();
+        return;
+      }
+
       const stream = targetFile.createReadStream({ start, end });
+      stream.on('error', (err) => {
+        // Normal client abort / seek
+      });
+      res.on('close', () => {
+        try { stream.destroy(); } catch (e) {}
+      });
       stream.pipe(res);
     } else {
       res.writeHead(200, {
         'Content-Length': fileSize,
         'Content-Type': contentType,
-        'Accept-Ranges': 'bytes'
+        'Accept-Ranges': 'bytes',
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'no-cache, no-store'
       });
 
+      if (req.method === 'HEAD') {
+        res.end();
+        return;
+      }
+
       const stream = targetFile.createReadStream();
+      stream.on('error', (err) => {
+        // Normal client abort / seek
+      });
+      res.on('close', () => {
+        try { stream.destroy(); } catch (e) {}
+      });
       stream.pipe(res);
     }
   } catch (err) {
     console.error('Torrent stream error:', err?.message || err);
-    res.statusCode = 500;
-    res.end('Torrent stream error: ' + (err?.message || err));
+    if (!res.headersSent) {
+      res.statusCode = 500;
+      res.end('Torrent stream error: ' + (err?.message || err));
+    }
   }
-});
+};
+
+router.get('/gdrive/stream-torrent/:apiKey/:infoHash/:fileIndex', handleTorrentStream);
+router.get('/gdrive/stream-torrent/:apiKey/:infoHash/:fileIndex/:filename', handleTorrentStream);
+router.head('/gdrive/stream-torrent/:apiKey/:infoHash/:fileIndex', handleTorrentStream);
+router.head('/gdrive/stream-torrent/:apiKey/:infoHash/:fileIndex/:filename', handleTorrentStream);
 
 // Initiate Google OAuth Flow
 router.get('/gdrive/auth', (req, res) => {

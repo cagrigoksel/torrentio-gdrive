@@ -52,6 +52,9 @@ export async function getOrAddTorrent(infoHash) {
       destroyStoreOnDestroy: true,
       maxConns: 100
     }, (t) => {
+      try {
+        t.deselect(0, t.pieces.length - 1, false);
+      } catch (e) {}
       clearTimeout(timeout);
       console.log(`WebTorrent metadata ready for: ${t.name} (${t.files.length} files)`);
       resolve(t);
@@ -100,6 +103,9 @@ export async function pipeTorrentToGoogleDrive(torrent, targetFile, apiKey) {
 
     // Create a read stream from the torrent file
     const stream = targetFile.createReadStream();
+    stream.on('error', (e) => {
+      console.warn('GDrive pipe stream read error:', e?.message || e);
+    });
 
     const media = {
       mimeType: 'video/x-matroska',

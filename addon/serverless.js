@@ -325,6 +325,28 @@ router.get('/gdrive/stream-torrent/:apiKey/:infoHash/:fileIndex/:filename', hand
 router.head('/gdrive/stream-torrent/:apiKey/:infoHash/:fileIndex', handleTorrentStream);
 router.head('/gdrive/stream-torrent/:apiKey/:infoHash/:fileIndex/:filename', handleTorrentStream);
 
+// Google Drive Status & Storage Quota Dashboard
+router.get('/gdrive/status', async (req, res) => {
+  try {
+    const { drive } = gdrive.getDriveClient('default');
+    const about = await drive.about.get({ fields: 'user, storageQuota' });
+    const { files } = await gdrive.getStremioFiles('default');
+
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({
+      user: about.data.user.emailAddress,
+      storageLimitGB: (about.data.storageQuota.limit / (1024**3)).toFixed(1),
+      storageUsedGB: (about.data.storageQuota.usage / (1024**3)).toFixed(1),
+      storageFreeGB: ((about.data.storageQuota.limit - about.data.storageQuota.usage) / (1024**3)).toFixed(1),
+      cachedFilesCount: files.length,
+      cachedFiles: files.map(f => ({ id: f.id, name: f.name, sizeMB: (f.size / (1024*1024)).toFixed(1) }))
+    }, null, 2));
+  } catch (err) {
+    res.statusCode = 500;
+    res.end(JSON.stringify({ error: err?.message || err }));
+  }
+});
+
 // Initiate Google OAuth Flow
 router.get('/gdrive/auth', (req, res) => {
   const clientId = process.env.GDRIVE_CLIENT_ID;

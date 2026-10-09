@@ -353,6 +353,28 @@ router.get('/gdrive/status', async (req, res) => {
   }
 });
 
+// Diagnostic Scraper Debug Route
+router.get('/debug/test-fetch', async (req, res) => {
+  try {
+    const t0 = Date.now();
+    const r = await fetch('https://torrentio.strem.fun/stream/movie/tt0111161.json', {
+      headers: {
+        'User-Agent': 'Stremio/4.4.168',
+        'Accept': 'application/json'
+      },
+      signal: AbortSignal.timeout(8000)
+    });
+    const status = r.status;
+    const body = await r.text();
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ status, timeMs: Date.now() - t0, bodySnippet: body.slice(0, 300) }));
+  } catch (e) {
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ error: e.message, stack: e.stack }));
+  }
+});
+
+
 // Initiate Google OAuth Flow
 router.get('/gdrive/auth', (req, res) => {
   const clientId = process.env.GDRIVE_CLIENT_ID;

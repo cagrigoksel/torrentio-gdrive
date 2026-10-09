@@ -107,8 +107,14 @@ export async function pipeTorrentToGoogleDrive(torrent, targetFile, apiKey) {
       console.warn('GDrive pipe stream read error:', e?.message || e);
     });
 
+    let mimeType = 'video/mp4';
+    const ext = targetFile.name.split('.').pop().toLowerCase();
+    if (ext === 'mkv') mimeType = 'video/x-matroska';
+    else if (ext === 'avi') mimeType = 'video/x-msvideo';
+    else if (ext === 'webm') mimeType = 'video/webm';
+
     const media = {
-      mimeType: 'video/x-matroska',
+      mimeType,
       body: stream
     };
 
@@ -118,14 +124,18 @@ export async function pipeTorrentToGoogleDrive(torrent, targetFile, apiKey) {
       description: infoHash,
       properties: {
         infoHash: infoHash,
-        fileIndex: targetFile.name
+        fileIndex: String(targetFile.name)
       }
     };
 
     const res = await drive.files.create({
-      resource: fileMetadata,
+      requestBody: fileMetadata,
       media: media,
-      fields: 'id, name, size'
+      fields: 'id, name, size',
+      supportsAllDrives: true
+    }, {
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity
     });
 
     console.log(`Successfully uploaded to Google Drive! File ID: ${res.data.id} (${res.data.name})`);

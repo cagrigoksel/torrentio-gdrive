@@ -275,9 +275,7 @@ function populateDownloadLinks(streams, results, config) {
         streams.push({
           name: `[${mochResult.moch.shortName}] ${stream.name}`,
           title: stream.title,
-          infoHash: stream.infoHash,
-          fileIdx: stream.fileIdx,
-          sources: stream.sources,
+          url: `${config.host}/resolve/${mochResult.moch.key}/${cachedEntry.url}/${streamFilename(stream)}`,
           behaviorHints: stream.behaviorHints
         });
       } else {

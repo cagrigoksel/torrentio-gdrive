@@ -12,7 +12,7 @@ import { createNamedQueue } from "./lib/namedQueue.js";
 import pLimit from "p-limit";
 
 const CACHE_MAX_AGE = parseInt(process.env.CACHE_MAX_AGE) || 60 * 60; // 1 hour in seconds
-const CACHE_MAX_AGE_EMPTY = 60; // 60 seconds
+const CACHE_MAX_AGE_EMPTY = 5; // 5 seconds retry for empty
 const CATALOG_CACHE_MAX_AGE = 0; // 0 minutes
 const STALE_REVALIDATE_AGE = 4 * 60 * 60; // 4 hours
 const STALE_ERROR_AGE = 7 * 24 * 60 * 60; // 7 days
@@ -20,6 +20,12 @@ const STALE_ERROR_AGE = 7 * 24 * 60 * 60; // 7 days
 const builder = new addonBuilder(dummyManifest());
 const requestQueue = createNamedQueue(200);
 const newLimiter = pLimit(50)
+
+const SCRAPER_MIRRORS = [
+  'https://torrentio.notprod.fyi',
+  'https://torrentio.withoutthefuss.dpdns.org',
+  'https://torrentio.strem.fun'
+];
 
 builder.defineStreamHandler((args) => {
   if (args.type !== Type.MOVIE && args.type !== Type.SERIES && args.type !== Type.ANIME) {
@@ -65,25 +71,26 @@ builder.defineMetaHandler((args) => {
 async function resolveStreams(args) {
   if (!process.env.DATABASE_URI) {
     return cacheWrapStream(args.id, async () => {
-      console.log(`Fetching streams for ${args.type} ${args.id} from Torrentio provider...`);
-      for (let attempt = 1; attempt <= 2; attempt++) {
+      console.log(`Fetching streams for ${args.type} ${args.id} from high-availability mirrors...`);
+      for (const mirror of SCRAPER_MIRRORS) {
         try {
-          const response = await fetch(`https://torrentio.strem.fun/stream/${args.type}/${args.id}.json`, {
+          const response = await fetch(`${mirror}/stream/${args.type}/${args.id}.json`, {
             headers: {
-              'User-Agent': 'Stremio/4.4.168',
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
               'Accept': 'application/json'
             },
-            signal: AbortSignal.timeout(20000)
+            signal: AbortSignal.timeout(10000),
+            redirect: 'follow'
           });
           if (response.ok) {
             const data = await response.json();
             if (data && Array.isArray(data.streams) && data.streams.length > 0) {
-              console.log(`Found ${data.streams.length} streams for ${args.id}`);
+              console.log(`Found ${data.streams.length} streams for ${args.id} via ${mirror}`);
               return data.streams;
             }
           }
         } catch (e) {
-          console.warn(`Scraper attempt ${attempt} failed for ${args.id}:`, e?.message || e);
+          console.warn(`Scraper failed via ${mirror} for ${args.id}:`, e?.message || e);
         }
       }
       return [];

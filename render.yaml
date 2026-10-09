@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: torrentio-gdrive
+    runtime: node
+    plan: free
+    region: frankfurt
+    rootDir: addon
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SERVICE_ACCOUNT_KEY
+        sync: false

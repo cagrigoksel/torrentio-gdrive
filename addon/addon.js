@@ -63,6 +63,25 @@ builder.defineMetaHandler((args) => {
 })
 
 async function resolveStreams(args) {
+  if (!process.env.DATABASE_URI) {
+    return cacheWrapStream(args.id, async () => {
+      try {
+        const response = await fetch(`https://torrentio.strem.fun/stream/${args.type}/${args.id}.json`, {
+          headers: { 'User-Agent': 'Mozilla/5.0' },
+          signal: AbortSignal.timeout(12000)
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data && Array.isArray(data.streams)) {
+            return data.streams;
+          }
+        }
+      } catch (e) {
+        console.warn('Failed proxying streams from public Torrentio:', e?.message || e);
+      }
+      return [];
+    });
+  }
   return cacheWrapStream(args.id, () => newLimiter(() => streamHandler(args)
       .then(records => records
           .sort((a, b) => b.torrent.seeders - a.torrent.seeders || b.torrent.uploadDate - a.torrent.uploadDate)

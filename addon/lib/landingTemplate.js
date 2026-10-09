@@ -25,6 +25,7 @@ export default function landingTemplate(manifest, config = {}) {
     [MochOptions.torbox.key]: config[MochOptions.torbox.key] || '',
     [MochOptions.putio.key]: config[MochOptions.putio.key] || '',
     [MochOptions.highway.key]: config[MochOptions.highway.key] || '',
+    [MochOptions.gdrive.key]: config[MochOptions.gdrive.key] || '',
   };
 
   let putioClientId = '';
@@ -344,7 +345,7 @@ export default function landingTemplate(manifest, config = {}) {
 
                   <div x-show="debridProvider !== 'none'" x-transition class="space-y-4 pt-2">
                       
-                      <div x-show="debridProvider !== '${MochOptions.putio.key}'">
+                      <div x-show="debridProvider !== '${MochOptions.putio.key}' && debridProvider !== '${MochOptions.gdrive.key}'">
                           <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">API Key</label>
                           <input type="text" x-model="apiKeys[debridProvider]" class="w-full bg-gray-800 border border-gray-700 text-xs md:text-sm text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
                           <div class="mt-2 text-right">
@@ -360,6 +361,22 @@ export default function landingTemplate(manifest, config = {}) {
                                  "
                                  class="text-[10px] md:text-xs text-indigo-400 hover:text-indigo-300 hover:underline focus:outline-none focus:ring-1 focus:ring-indigo-400 rounded">
                                   Find API Key &rarr;
+                              </a>
+                          </div>
+                      </div>
+
+                      <div x-show="debridProvider === '${MochOptions.gdrive.key}'" class="space-y-3">
+                          <div>
+                              <label class="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Google Drive Yetki Tokenı</label>
+                              <input type="text" x-model="apiKeys['${MochOptions.gdrive.key}']" placeholder="Refresh Token / Base64 Token (veya 'default')" class="w-full bg-gray-800 border border-gray-700 text-xs md:text-sm text-white rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-indigo-500 outline-none">
+                          </div>
+                          <div class="p-3 bg-gray-800/60 rounded-lg border border-gray-700/80 flex items-center justify-between">
+                              <div class="text-xs text-gray-300">
+                                  <span class="font-semibold text-emerald-400">Tek Tıkla Bağlan:</span>
+                                  <span class="block text-[11px] text-gray-400">Google hesabınla oturum aç ve yetkilendir</span>
+                              </div>
+                              <a href="/gdrive/auth" target="_blank" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg shadow transition">
+                                  Google ile Bağlan &rarr;
                               </a>
                           </div>
                       </div>

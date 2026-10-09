@@ -23,7 +23,7 @@ async function shutdown(signal) {
   const closed = new Promise(resolve => server.close(resolve));
   server.closeIdleConnections();
   await closed;
-  await Promise.allSettled([closeDatabase(), closeCache(), redisClient.quit()]);
+  await Promise.allSettled([closeDatabase(), closeCache(), redisClient ? redisClient.quit() : Promise.resolve()]);
   clearTimeout(forced);
   process.exit(0);
 }

@@ -5,19 +5,18 @@ const Op = Sequelize.Op;
 const DATABASE_URI = process.env.DATABASE_URI;
 
 const getSqlOperation = sql => sql.match(/\b(SELECT|INSERT|UPDATE|DELETE)\b/i)?.[1]?.toUpperCase() ?? 'OTHER';
-const database = new Sequelize(DATABASE_URI, {
+const database = DATABASE_URI ? new Sequelize(DATABASE_URI, {
   benchmark: true,
   logging: (sql, ms) => observeDb(getSqlOperation(sql), (ms ?? 0) / 1000),
   pool: { max: 30, min: 5, idle: 20 * 60 * 1000 }
-});
+}) : null;
 
 export function poolStats() {
   const pool = database?.connectionManager?.pool;
   return pool ? { size: pool.size, available: pool.available, using: pool.using, waiting: pool.waiting } : {};
 }
 
-
-const Torrent = database.define('torrent',
+const Torrent = database ? database.define('torrent',
     {
       infoHash: { type: Sequelize.STRING(64), primaryKey: true },
       provider: { type: Sequelize.STRING(32), allowNull: false },
@@ -31,9 +30,9 @@ const Torrent = database.define('torrent',
       languages: { type: Sequelize.STRING(4096) },
       resolution: { type: Sequelize.STRING(16) }
     }
-);
+) : null;
 
-const File = database.define('file',
+const File = database ? database.define('file',
     {
       id: { type: Sequelize.BIGINT, autoIncrement: true, primaryKey: true },
       infoHash: {
@@ -51,9 +50,9 @@ const File = database.define('file',
       kitsuId: { type: Sequelize.INTEGER },
       kitsuEpisode: { type: Sequelize.INTEGER }
     },
-);
+) : null;
 
-const Subtitle = database.define('subtitle',
+const Subtitle = database ? database.define('subtitle',
     {
       infoHash: {
         type: Sequelize.STRING(64),
@@ -72,22 +71,26 @@ const Subtitle = database.define('subtitle',
       size: { type: Sequelize.BIGINT, allowNull: false },
     },
     { timestamps: false }
-);
+) : null;
 
-Torrent.hasMany(File, { foreignKey: 'infoHash', constraints: false });
-File.belongsTo(Torrent, { foreignKey: 'infoHash', constraints: false });
-File.hasMany(Subtitle, { foreignKey: 'fileId', constraints: false });
-Subtitle.belongsTo(File, { foreignKey: 'fileId', constraints: false });
+if (database) {
+  Torrent.hasMany(File, { foreignKey: 'infoHash', constraints: false });
+  File.belongsTo(Torrent, { foreignKey: 'infoHash', constraints: false });
+  File.hasMany(Subtitle, { foreignKey: 'fileId', constraints: false });
+  Subtitle.belongsTo(File, { foreignKey: 'fileId', constraints: false });
+}
 
 export function closeDatabase() {
-  return database.close();
+  return database ? database.close() : Promise.resolve();
 }
 
 export function getTorrent(infoHash) {
+  if (!Torrent) return Promise.resolve(null);
   return Torrent.findOne({ where: { infoHash: infoHash } });
 }
 
 export function getFiles(infoHashes) {
+  if (!File) return Promise.resolve([]);
   return File.findAll({
     attributes: ['infoHash', 'title', 'imdbId', 'imdbSeason', 'imdbEpisode'],
     where: { infoHash: { [Op.in]: infoHashes } },
@@ -96,6 +99,7 @@ export function getFiles(infoHashes) {
 }
 
 export function getImdbIdMovieEntries(imdbId) {
+  if (!File) return Promise.resolve([]);
   return File.findAll({
     where: {
       imdbId: { [Op.eq]: imdbId }
@@ -109,6 +113,7 @@ export function getImdbIdMovieEntries(imdbId) {
 }
 
 export function getImdbIdSeriesEntries(imdbId, season, episode) {
+  if (!File) return Promise.resolve([]);
   return File.findAll({
     where: {
       imdbId: { [Op.eq]: imdbId },
@@ -124,6 +129,7 @@ export function getImdbIdSeriesEntries(imdbId, season, episode) {
 }
 
 export function getKitsuIdMovieEntries(kitsuId) {
+  if (!File) return Promise.resolve([]);
   return File.findAll({
     where: {
       kitsuId: { [Op.eq]: kitsuId }
@@ -137,6 +143,7 @@ export function getKitsuIdMovieEntries(kitsuId) {
 }
 
 export function getKitsuIdSeriesEntries(kitsuId, episode) {
+  if (!File) return Promise.resolve([]);
   return File.findAll({
     where: {
       kitsuId: { [Op.eq]: kitsuId },

@@ -8,6 +8,7 @@ import * as offcloud from './offcloud.js';
 import * as torbox from './torbox.js';
 import * as putio from './putio.js';
 import * as highway from './highway.js';
+import * as gdrive from './gdrive.js';
 import StaticResponse, { isStaticUrl } from './static.js';
 import { cacheWrapResolvedUrl } from '../lib/cache.js';
 import { executeWithBreaker, isBreakerOpen, isBreakerTripped } from './circuitBreaker.js';
@@ -86,6 +87,13 @@ export const MochOptions = {
     name: 'HighWay',
     shortName: 'HW',
     catalogs: []
+  },
+  gdrive: {
+    key: 'gdrive',
+    instance: gdrive,
+    name: 'GoogleDrive',
+    shortName: 'GDrive',
+    catalogs: ['']
   }
 };
 
@@ -282,6 +290,10 @@ function isHealthyStreamForDebrid(streams, stream) {
 }
 
 function isInvalidToken(token, mochKey) {
+  if (mochKey === 'gdrive') {
+    if (token === 'default' && process.env.GDRIVE_REFRESH_TOKEN) return false;
+    if (token && token.length >= 10) return false;
+  }
   return !token
       || token.length < MIN_API_KEY_SYMBOLS
       || INVALID_API_KEY_SYMBOLS.test(token)

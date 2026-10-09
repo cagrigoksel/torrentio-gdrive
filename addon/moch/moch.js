@@ -244,7 +244,7 @@ function processMochResults(streams, config, results) {
     return resultStreams;
   }, streams);
   const resultStreams = excludeDownloadLinks ? cachedStreams : populateDownloadLinks(cachedStreams, results, config);
-  return resultStreams.filter(stream => stream.url);
+  return resultStreams.filter(stream => stream.url || stream.infoHash);
 }
 
 function populateCachedLinks(streams, mochResult, config) {
@@ -302,8 +302,7 @@ function isHealthyStreamForDebrid(streams, stream) {
 
 function isInvalidToken(token, mochKey) {
   if (mochKey === 'gdrive') {
-    if (token === 'default' && process.env.GDRIVE_REFRESH_TOKEN) return false;
-    if (token && token.length >= 10) return false;
+    return false;
   }
   return !token
       || token.length < MIN_API_KEY_SYMBOLS

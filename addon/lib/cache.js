@@ -41,26 +41,29 @@ const mongoCache = MONGO_URI && new KeyvMongo(MONGO_URI, {
 });
 
 async function cacheWrap(name, key, method, ttl, memCache = memoryCache) {
-    if (!mongoCache) {
-        return method();
-    }
     let value = await cacheGet(memCache, key);
     if (value !== undefined) {
         cacheResult(name, 'memory');
         return value;
     }
-    const mongoEnd = cacheTimer('get');
-    value = await cacheGet(mongoCache, key, true);
-    mongoEnd();
-    if (value !== undefined) {
-        cacheResult(name, 'store');
-        cacheSet(memCache, key, value, ttl);
-        return value;
+    if (mongoCache) {
+        const mongoEnd = cacheTimer('get');
+        value = await cacheGet(mongoCache, key, true);
+        mongoEnd();
+        if (value !== undefined) {
+            cacheResult(name, 'store');
+            cacheSet(memCache, key, value, ttl);
+            return value;
+        }
     }
     cacheResult(name, 'miss');
     const result = await method();
-    cacheSet(mongoCache, key, result, ttl);
-    cacheSet(memCache, key, result, ttl);
+    if (result !== undefined) {
+        cacheSet(memCache, key, result, ttl);
+        if (mongoCache) {
+            cacheSet(mongoCache, key, result, ttl);
+        }
+    }
     return result;
 }
 

@@ -65,19 +65,26 @@ builder.defineMetaHandler((args) => {
 async function resolveStreams(args) {
   if (!process.env.DATABASE_URI) {
     return cacheWrapStream(args.id, async () => {
-      try {
-        const response = await fetch(`https://torrentio.strem.fun/stream/${args.type}/${args.id}.json`, {
-          headers: { 'User-Agent': 'Mozilla/5.0' },
-          signal: AbortSignal.timeout(12000)
-        });
-        if (response.ok) {
-          const data = await response.json();
-          if (data && Array.isArray(data.streams)) {
-            return data.streams;
+      console.log(`Fetching streams for ${args.type} ${args.id} from Torrentio provider...`);
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          const response = await fetch(`https://torrentio.strem.fun/stream/${args.type}/${args.id}.json`, {
+            headers: {
+              'User-Agent': 'Stremio/4.4.168',
+              'Accept': 'application/json'
+            },
+            signal: AbortSignal.timeout(20000)
+          });
+          if (response.ok) {
+            const data = await response.json();
+            if (data && Array.isArray(data.streams) && data.streams.length > 0) {
+              console.log(`Found ${data.streams.length} streams for ${args.id}`);
+              return data.streams;
+            }
           }
+        } catch (e) {
+          console.warn(`Scraper attempt ${attempt} failed for ${args.id}:`, e?.message || e);
         }
-      } catch (e) {
-        console.warn('Failed proxying streams from public Torrentio:', e?.message || e);
       }
       return [];
     });

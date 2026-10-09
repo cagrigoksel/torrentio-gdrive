@@ -78,8 +78,16 @@ function sortBySeeders(streams, config, type) {
 
 function sortBySize(streams, limit) {
   return streams
-      .map(stream => ({ stream, size: extractSize(stream.title) }))
-      .sort((a, b) => b.size - a.size)
+      .map(stream => ({
+        stream,
+        isCached: stream.name?.includes('+'),
+        size: extractSize(stream.title)
+      }))
+      .sort((a, b) => {
+        if (a.isCached && !b.isCached) return -1;
+        if (!a.isCached && b.isCached) return 1;
+        return b.size - a.size;
+      })
       .map(entry => entry.stream)
       .slice(0, limit);
 }

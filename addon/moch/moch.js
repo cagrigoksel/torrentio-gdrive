@@ -271,12 +271,23 @@ function populateDownloadLinks(streams, results, config) {
     const cachedEntry = mochResult.mochStreams[`${stream.infoHash}@${stream.fileIdx}`];
     const isCached = cachedEntry?.cached;
     if (supportDownloads && cachedEntry && !isCached && isHealthyStreamForDebrid(seededStreams, stream)) {
-      streams.push({
-        name: `[${mochResult.moch.shortName} download] ${stream.name}`,
-        title: stream.title,
-        url: `${config.host}/resolve/${mochResult.moch.key}/${cachedEntry.url}/${streamFilename(stream)}`,
-        behaviorHints: stream.behaviorHints
-      })
+      if (mochResult.moch.key === 'gdrive') {
+        streams.push({
+          name: `[${mochResult.moch.shortName}] ${stream.name}`,
+          title: stream.title,
+          infoHash: stream.infoHash,
+          fileIdx: stream.fileIdx,
+          sources: stream.sources,
+          behaviorHints: stream.behaviorHints
+        });
+      } else {
+        streams.push({
+          name: `[${mochResult.moch.shortName} download] ${stream.name}`,
+          title: stream.title,
+          url: `${config.host}/resolve/${mochResult.moch.key}/${cachedEntry.url}/${streamFilename(stream)}`,
+          behaviorHints: stream.behaviorHints
+        });
+      }
     }
   }));
   return streams;

@@ -81,7 +81,21 @@ export function getServiceAccountPath() {
 }
 
 export function getDriveClient(apiKey) {
-  // If service_account.json exists or is in env, prefer Service Account for lifetime permanent access!
+  const creds = parseCredentials(apiKey);
+  if (creds && creds.refreshToken && creds.clientId) {
+    const oauth2Client = new google.auth.OAuth2(
+      creds.clientId,
+      creds.clientSecret,
+      'http://localhost:7070/oauth/callback'
+    );
+    oauth2Client.setCredentials({
+      refresh_token: creds.refreshToken
+    });
+    const drive = google.drive({ version: 'v3', auth: oauth2Client });
+    return { drive, oauth2Client };
+  }
+
+  // Fallback to Service Account if present
   const saPath = getServiceAccountPath();
   if (saPath || process.env.SERVICE_ACCOUNT_KEY) {
     const auth = new google.auth.GoogleAuth({
@@ -93,23 +107,7 @@ export function getDriveClient(apiKey) {
     return { drive, oauth2Client: auth };
   }
 
-  const creds = parseCredentials(apiKey);
-  if (!creds || !creds.refreshToken) {
-    throw BadTokenError;
-  }
-
-  const oauth2Client = new google.auth.OAuth2(
-    creds.clientId,
-    creds.clientSecret,
-    'http://localhost:7070/oauth/callback'
-  );
-
-  oauth2Client.setCredentials({
-    refresh_token: creds.refreshToken
-  });
-
-  const drive = google.drive({ version: 'v3', auth: oauth2Client });
-  return { drive, oauth2Client };
+  throw BadTokenError;
 }
 
 export async function getOrCreateStremioFolder(drive) {
@@ -213,7 +211,7 @@ export async function getCachedStreams(streams, apiKey) {
       const isCached = !!matchedFile;
 
       mochStreams[`${stream.infoHash}@${stream.fileIdx}`] = {
-        url: `${encodeURIComponent(apiKey)}/${stream.infoHash}/${encodeURIComponent(filename)}/${stream.fileIdx}${matchedFile ? '/' + matchedFile.id : ''}`,
+        url: `${encodeURIComponent(apiKey)}/${stream.infoHash}/${encodeURIComponent(filename)}/${stream.fileIdx}`,
         cached: isCached
       };
 

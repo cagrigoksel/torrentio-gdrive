@@ -1,4 +1,5 @@
 import { google } from 'googleapis';
+import fs from 'fs';
 import { streamFilename, BadTokenError, AccessDeniedError, NotFoundError } from './mochHelper.js';
 import { Type } from '../lib/types.js';
 import { isVideo } from '../lib/extension.js';
@@ -58,6 +59,17 @@ export function parseCredentials(apiKey) {
 }
 
 export function getDriveClient(apiKey) {
+  // If service_account.json exists or is in env, prefer Service Account for lifetime permanent access!
+  if (fs.existsSync('service_account.json') || process.env.SERVICE_ACCOUNT_KEY) {
+    const auth = new google.auth.GoogleAuth({
+      keyFile: fs.existsSync('service_account.json') ? 'service_account.json' : undefined,
+      credentials: process.env.SERVICE_ACCOUNT_KEY ? JSON.parse(process.env.SERVICE_ACCOUNT_KEY) : undefined,
+      scopes: ['https://www.googleapis.com/auth/drive']
+    });
+    const drive = google.drive({ version: 'v3', auth });
+    return { drive, oauth2Client: auth };
+  }
+
   const creds = parseCredentials(apiKey);
   if (!creds || !creds.refreshToken) {
     throw BadTokenError;
@@ -66,7 +78,7 @@ export function getDriveClient(apiKey) {
   const oauth2Client = new google.auth.OAuth2(
     creds.clientId,
     creds.clientSecret,
-    'http://localhost:7000/oauth/callback'
+    'http://localhost:7070/oauth/callback'
   );
 
   oauth2Client.setCredentials({
@@ -78,11 +90,14 @@ export function getDriveClient(apiKey) {
 }
 
 export async function getOrCreateStremioFolder(drive) {
+  // Check shared folders first, then user's root
   const query = `name = '${STREMIO_FOLDER_NAME}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
   const res = await drive.files.list({
     q: query,
     fields: 'files(id, name)',
-    spaces: 'drive'
+    spaces: 'drive',
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true
   });
 
   if (res.data.files && res.data.files.length > 0) {
@@ -97,7 +112,8 @@ export async function getOrCreateStremioFolder(drive) {
 
   const folder = await drive.files.create({
     resource: folderMetadata,
-    fields: 'id'
+    fields: 'id',
+    supportsAllDrives: true
   });
 
   return folder.data.id;
@@ -120,7 +136,9 @@ export async function getStremioFiles(apiKey) {
     q: query,
     pageSize: 1000,
     fields: 'files(id, name, size, mimeType, description, properties)',
-    spaces: 'drive'
+    spaces: 'drive',
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true
   });
 
   const files = res.data.files || [];

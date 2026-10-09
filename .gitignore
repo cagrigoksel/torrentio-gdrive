@@ -1,6 +1,7 @@
 /.idea
 **/node_modules
 **.env
+*service_account*.json
 .now
 /scraper/manual/examples.js
 /upstreams.conf

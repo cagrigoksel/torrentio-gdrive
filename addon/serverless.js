@@ -216,6 +216,12 @@ router.get('/gdrive/stream-torrent/:apiKey/:infoHash/:fileIndex{/:filename}', as
     const rangeHeader = req.headers.range;
     const fileSize = targetFile.length;
 
+    let contentType = 'video/mp4';
+    const ext = targetFile.name.split('.').pop().toLowerCase();
+    if (ext === 'mkv') contentType = 'video/x-matroska';
+    else if (ext === 'avi') contentType = 'video/x-msvideo';
+    else if (ext === 'webm') contentType = 'video/webm';
+
     if (rangeHeader) {
       const parts = rangeHeader.replace(/bytes=/, '').split('-');
       const start = parseInt(parts[0], 10);
@@ -226,7 +232,7 @@ router.get('/gdrive/stream-torrent/:apiKey/:infoHash/:fileIndex{/:filename}', as
         'Content-Range': `bytes ${start}-${end}/${fileSize}`,
         'Accept-Ranges': 'bytes',
         'Content-Length': chunksize,
-        'Content-Type': 'video/mp4'
+        'Content-Type': contentType
       });
 
       const stream = targetFile.createReadStream({ start, end });
@@ -234,7 +240,7 @@ router.get('/gdrive/stream-torrent/:apiKey/:infoHash/:fileIndex{/:filename}', as
     } else {
       res.writeHead(200, {
         'Content-Length': fileSize,
-        'Content-Type': 'video/mp4',
+        'Content-Type': contentType,
         'Accept-Ranges': 'bytes'
       });
 

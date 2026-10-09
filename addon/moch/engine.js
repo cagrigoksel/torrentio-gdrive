@@ -16,38 +16,48 @@ client.on('error', (err) => {
 // Active torrent and upload tasks: infoHash -> { torrent, uploading, completed }
 const activeJobs = new Map();
 
+// Active torrents map: infoHash -> Torrent instance
+const activeTorrents = new Map();
+
 export function getTorrentEngine() {
   return client;
 }
 
 export async function getOrAddTorrent(infoHash) {
   const hash = infoHash.toLowerCase();
-  const existing = client.get(hash);
-  if (existing && existing.files && existing.files.length) {
-    return existing;
+  if (activeTorrents.has(hash)) {
+    const t = activeTorrents.get(hash);
+    if (t.ready && t.files && t.files.length) {
+      return t;
+    }
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => resolve(t.files && t.files.length ? t : null), 20000);
+      t.once('ready', () => {
+        clearTimeout(timeout);
+        resolve(t);
+      });
+    });
   }
 
   return new Promise((resolve) => {
     console.log(`WebTorrent adding torrent ${hash} with ${TIER1_TRACKERS.length} announce trackers...`);
     
     const timeout = setTimeout(() => {
-      const torrent = client.get(hash);
-      if (torrent && torrent.files && torrent.files.length) {
-        resolve(torrent);
-      } else {
-        console.warn(`WebTorrent metadata timeout for ${hash}`);
-        resolve(null);
-      }
-    }, 15000);
+      console.warn(`WebTorrent metadata timeout for ${hash}`);
+      resolve(null);
+    }, 25000);
 
     const torrent = client.add(hash, {
       announce: TIER1_TRACKERS,
-      destroyStoreOnDestroy: true
+      destroyStoreOnDestroy: true,
+      maxConns: 100
     }, (t) => {
       clearTimeout(timeout);
       console.log(`WebTorrent metadata ready for: ${t.name} (${t.files.length} files)`);
       resolve(t);
     });
+
+    activeTorrents.set(hash, torrent);
 
     torrent.on('error', (err) => {
       console.error('Torrent error:', err?.message || err);

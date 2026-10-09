@@ -22,6 +22,7 @@ const requestQueue = createNamedQueue(200);
 const newLimiter = pLimit(50)
 
 const SCRAPER_MIRRORS = [
+  'https://pipe.boringways.workers.dev',
   'https://torrentio.notprod.fyi',
   'https://torrentio.withoutthefuss.dpdns.org',
   'https://torrentio.strem.fun'
@@ -86,12 +87,24 @@ async function resolveStreams(args) {
             const data = await response.json();
             if (data && Array.isArray(data.streams) && data.streams.length > 0) {
               console.log(`Found ${data.streams.length} streams for ${args.id} via ${mirror}`);
-              return data.streams;
+              return data.streams.map(stream => ({
+                ...stream,
+                name: (stream.name || 'Torrentio').replace(/^Pipe/i, 'Torrentio')
+              }));
             }
           }
         } catch (e) {
           console.warn(`Scraper failed via ${mirror} for ${args.id}:`, e?.message || e);
         }
+      }
+      if (args.type === Type.MOVIE) {
+        try {
+          const ytsStreams = await fetchYtsFallback(args.id);
+          if (ytsStreams.length > 0) {
+            console.log(`Found ${ytsStreams.length} streams for ${args.id} via direct YTS API`);
+            return ytsStreams;
+          }
+        } catch (_) {}
       }
       return [];
     });
@@ -138,6 +151,31 @@ async function movieRecordsHandler(args) {
     return seriesRecordsHandler(args);
   }
   return Promise.resolve([]);
+}
+
+async function fetchYtsFallback(imdbId) {
+  try {
+    const res = await fetch(`https://movies-api.accel.li/api/v2/list_movies.json?query_term=${imdbId}`, {
+      headers: { 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(6000)
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const movie = data?.data?.movies?.[0];
+    if (!movie?.torrents || !Array.isArray(movie.torrents)) return [];
+    return movie.torrents.map(t => ({
+      name: `Torrentio\n${t.quality}`,
+      title: `${movie.title_long} [${t.quality}] [${t.type}]\n👤 ${t.seeds || 1} 💾 ${t.size} ⚙️ YTS`,
+      infoHash: t.hash.toLowerCase(),
+      fileIdx: 0,
+      behaviorHints: {
+        bingeGroup: `torrentio|${t.quality}|${t.type}`,
+        filename: `${movie.slug}.${t.quality}.${t.type}.mp4`
+      }
+    }));
+  } catch (_) {
+    return [];
+  }
 }
 
 function enrichCacheParams(streams) {

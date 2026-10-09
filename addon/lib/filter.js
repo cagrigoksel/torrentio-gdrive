@@ -257,8 +257,8 @@ function filterByProvider(streams, config) {
     return streams;
   }
   return streams.filter(stream => {
-    const provider = extractProvider(stream.title).toLowerCase();
-    return providers.includes(provider);
+    const provider = extractProvider(stream.title)?.toLowerCase();
+    return !provider || providers.includes(provider);
   })
 }
 

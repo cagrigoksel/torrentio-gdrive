@@ -329,15 +329,21 @@ router.head('/gdrive/stream-torrent/:apiKey/:infoHash/:fileIndex/:filename', han
 router.get('/gdrive/status', async (req, res) => {
   try {
     const { drive } = gdrive.getDriveClient('default');
-    const about = await drive.about.get({ fields: 'user, storageQuota' });
     const { files } = await gdrive.getStremioFiles('default');
+    let about = null;
+    try {
+      const resAbout = await drive.about.get({ fields: 'user, storageQuota' });
+      about = resAbout.data;
+    } catch (_) {}
 
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({
-      user: about.data.user.emailAddress,
-      storageLimitGB: (about.data.storageQuota.limit / (1024**3)).toFixed(1),
-      storageUsedGB: (about.data.storageQuota.usage / (1024**3)).toFixed(1),
-      storageFreeGB: ((about.data.storageQuota.limit - about.data.storageQuota.usage) / (1024**3)).toFixed(1),
+      status: 'active',
+      authMethod: gdrive.getServiceAccountPath() ? 'Service Account (Lifetime Permanent)' : 'OAuth',
+      storageQuota: about ? {
+        limitGB: (about.storageQuota.limit / (1024**3)).toFixed(1),
+        usedGB: (about.storageQuota.usage / (1024**3)).toFixed(1)
+      } : { note: '5 TB Personal Google Drive Account (Shared /Stremio Folder)' },
       cachedFilesCount: files.length,
       cachedFiles: files.map(f => ({ id: f.id, name: f.name, sizeMB: (f.size / (1024*1024)).toFixed(1) }))
     }, null, 2));

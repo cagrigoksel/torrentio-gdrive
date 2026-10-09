@@ -81,6 +81,18 @@ export function getServiceAccountPath() {
 }
 
 export function getDriveClient(apiKey) {
+  // Prefer Service Account for lifetime permanent access (zero token expiration!)
+  const saPath = getServiceAccountPath();
+  if (saPath || process.env.SERVICE_ACCOUNT_KEY) {
+    const auth = new google.auth.GoogleAuth({
+      keyFile: saPath || undefined,
+      credentials: process.env.SERVICE_ACCOUNT_KEY ? JSON.parse(process.env.SERVICE_ACCOUNT_KEY) : undefined,
+      scopes: ['https://www.googleapis.com/auth/drive']
+    });
+    const drive = google.drive({ version: 'v3', auth });
+    return { drive, oauth2Client: auth };
+  }
+
   const creds = parseCredentials(apiKey);
   if (creds && creds.refreshToken && creds.clientId) {
     const oauth2Client = new google.auth.OAuth2(
@@ -93,18 +105,6 @@ export function getDriveClient(apiKey) {
     });
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
     return { drive, oauth2Client };
-  }
-
-  // Fallback to Service Account if present
-  const saPath = getServiceAccountPath();
-  if (saPath || process.env.SERVICE_ACCOUNT_KEY) {
-    const auth = new google.auth.GoogleAuth({
-      keyFile: saPath || undefined,
-      credentials: process.env.SERVICE_ACCOUNT_KEY ? JSON.parse(process.env.SERVICE_ACCOUNT_KEY) : undefined,
-      scopes: ['https://www.googleapis.com/auth/drive']
-    });
-    const drive = google.drive({ version: 'v3', auth });
-    return { drive, oauth2Client: auth };
   }
 
   throw BadTokenError;

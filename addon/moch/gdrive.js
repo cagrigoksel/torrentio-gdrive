@@ -17,7 +17,7 @@ const CACHE_TTL_MS = 25 * 1000; // 25 seconds cache for folder contents
 const driveCache = new Map();
 
 export function parseCredentials(apiKey) {
-  if (!apiKey) {
+  if (!apiKey || apiKey === 'default') {
     if (process.env.GDRIVE_REFRESH_TOKEN) {
       return {
         clientId: process.env.GDRIVE_CLIENT_ID,
@@ -99,19 +99,7 @@ export function parseServiceAccountCredentials(raw) {
 }
 
 export function getDriveClient(apiKey) {
-  // Prefer Service Account for lifetime permanent access (zero token expiration!)
-  const saPath = getServiceAccountPath();
-  const parsedCreds = parseServiceAccountCredentials(process.env.SERVICE_ACCOUNT_KEY);
-  if (saPath || parsedCreds) {
-    const auth = new google.auth.GoogleAuth({
-      keyFile: (!parsedCreds && saPath) ? saPath : undefined,
-      credentials: parsedCreds || undefined,
-      scopes: ['https://www.googleapis.com/auth/drive']
-    });
-    const drive = google.drive({ version: 'v3', auth });
-    return { drive, oauth2Client: auth };
-  }
-
+  // 1. Prefer OAuth because it owns the 5.1 TB personal storage quota!
   const creds = parseCredentials(apiKey);
   if (creds && creds.refreshToken && creds.clientId) {
     const oauth2Client = new google.auth.OAuth2(
@@ -124,6 +112,19 @@ export function getDriveClient(apiKey) {
     });
     const drive = google.drive({ version: 'v3', auth: oauth2Client });
     return { drive, oauth2Client };
+  }
+
+  // 2. Service Account fallback (for shared library access)
+  const saPath = getServiceAccountPath();
+  const parsedCreds = parseServiceAccountCredentials(process.env.SERVICE_ACCOUNT_KEY);
+  if (saPath || parsedCreds) {
+    const auth = new google.auth.GoogleAuth({
+      keyFile: (!parsedCreds && saPath) ? saPath : undefined,
+      credentials: parsedCreds || undefined,
+      scopes: ['https://www.googleapis.com/auth/drive']
+    });
+    const drive = google.drive({ version: 'v3', auth });
+    return { drive, oauth2Client: auth };
   }
 
   throw BadTokenError;

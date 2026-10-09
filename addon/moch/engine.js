@@ -47,10 +47,11 @@ export async function getOrAddTorrent(infoHash) {
       resolve(null);
     }, 25000);
 
-    const torrent = client.add(hash, {
+    const magnetUri = `magnet:?xt=urn:btih:${hash}&${TIER1_TRACKERS.map(tr => 'tr=' + encodeURIComponent(tr)).join('&')}`;
+    const torrent = client.add(magnetUri, {
       announce: TIER1_TRACKERS,
       destroyStoreOnDestroy: true,
-      maxConns: 100
+      maxConns: 120
     }, (t) => {
       try {
         t.deselect(0, t.pieces.length - 1, false);
@@ -75,7 +76,7 @@ export function findTargetVideoFile(torrent, fileIndex) {
     return null;
   }
 
-  if (Number.isInteger(fileIndex) && torrent.files[fileIndex]) {
+  if (Number.isInteger(fileIndex) && torrent.files[fileIndex] && isVideo(torrent.files[fileIndex].name)) {
     return torrent.files[fileIndex];
   }
 
@@ -85,6 +86,16 @@ export function findTargetVideoFile(torrent, fileIndex) {
     .sort((a, b) => b.length - a.length);
 
   return videoFiles[0] || torrent.files[0];
+}
+
+function readTorrentRange(file, start, end) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    const stream = file.createReadStream({ start, end });
+    stream.on('data', chunk => chunks.push(chunk));
+    stream.on('end', () => resolve(Buffer.concat(chunks)));
+    stream.on('error', reject);
+  });
 }
 
 export async function pipeTorrentToGoogleDrive(torrent, targetFile, apiKey) {
@@ -98,50 +109,74 @@ export async function pipeTorrentToGoogleDrive(torrent, targetFile, apiKey) {
   try {
     const { drive } = getDriveClient(apiKey);
     const folderId = await getOrCreateStremioFolder(drive);
+    const auth = drive.context._options.auth;
+    const headers = await auth.getRequestHeaders();
 
-    console.log(`Starting background Google Drive upload for "${targetFile.name}" (${(targetFile.length / (1024 * 1024)).toFixed(1)} MB) to folder ${folderId}...`);
+    const totalSize = targetFile.length;
+    console.log(`Starting 64MB rolling-chunk upload for "${targetFile.name}" (${(totalSize / (1024**3)).toFixed(2)} GB) to Google Drive /Stremio...`);
 
-    // Create a read stream from the torrent file
-    const stream = targetFile.createReadStream();
-    stream.on('error', (e) => {
-      console.warn('GDrive pipe stream read error:', e?.message || e);
+    // 1. Create Resumable Upload Session
+    const sessionRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true', {
+      method: 'POST',
+      headers: {
+        ...Object.fromEntries(headers.entries()),
+        'Content-Type': 'application/json; charset=UTF-8'
+      },
+      body: JSON.stringify({
+        name: targetFile.name,
+        parents: [folderId],
+        description: infoHash,
+        properties: {
+          infoHash: infoHash,
+          fileIndex: String(targetFile.name)
+        }
+      })
     });
 
-    let mimeType = 'video/mp4';
-    const ext = targetFile.name.split('.').pop().toLowerCase();
-    if (ext === 'mkv') mimeType = 'video/x-matroska';
-    else if (ext === 'avi') mimeType = 'video/x-msvideo';
-    else if (ext === 'webm') mimeType = 'video/webm';
+    if (!sessionRes.ok) {
+      throw new Error(`Failed to initiate resumable upload session: ${sessionRes.statusText}`);
+    }
 
-    const media = {
-      mimeType,
-      body: stream
-    };
+    const sessionUrl = sessionRes.headers.get('location');
+    if (!sessionUrl) {
+      throw new Error('No resumable session location returned by Google Drive');
+    }
 
-    const fileMetadata = {
-      name: targetFile.name,
-      parents: [folderId],
-      description: infoHash,
-      properties: {
-        infoHash: infoHash,
-        fileIndex: String(targetFile.name)
+    // 2. Rolling Chunks (64 MB buffer in RAM, ZERO bytes on local disk!)
+    const CHUNK_SIZE = 64 * 1024 * 1024; // 64 MB (256 KiB aligned)
+    let offset = 0;
+
+    while (offset < totalSize) {
+      const end = Math.min(offset + CHUNK_SIZE - 1, totalSize - 1);
+      const chunkSize = end - offset + 1;
+
+      console.log(`[Rolling Buffer] Fetching chunk [${(offset / (1024*1024)).toFixed(0)} - ${(end / (1024*1024)).toFixed(0)} MB]...`);
+      const chunkBuf = await readTorrentRange(targetFile, offset, end);
+
+      const putRes = await fetch(sessionUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Length': String(chunkSize),
+          'Content-Range': `bytes ${offset}-${end}/${totalSize}`
+        },
+        body: chunkBuf
+      });
+
+      if (putRes.status === 308) {
+        offset = end + 1;
+        const pct = ((offset / totalSize) * 100).toFixed(1);
+        console.log(`[Rolling Buffer] GDrive uploaded: ${pct}% (${(offset / (1024**3)).toFixed(2)} / ${(totalSize / (1024**3)).toFixed(2)} GB)`);
+      } else if (putRes.status === 200 || putRes.status === 201) {
+        const fileData = await putRes.json();
+        console.log(`🎉 Google Drive upload complete! File ID: ${fileData.id} (${fileData.name})`);
+        activeJobs.set(infoHash, { torrent, uploading: false, completed: true, fileId: fileData.id });
+        break;
+      } else {
+        throw new Error(`Upload chunk failed with status ${putRes.status} ${putRes.statusText}`);
       }
-    };
-
-    const res = await drive.files.create({
-      requestBody: fileMetadata,
-      media: media,
-      fields: 'id, name, size',
-      supportsAllDrives: true
-    }, {
-      maxBodyLength: Infinity,
-      maxContentLength: Infinity
-    });
-
-    console.log(`Successfully uploaded to Google Drive! File ID: ${res.data.id} (${res.data.name})`);
-    activeJobs.set(infoHash, { torrent, uploading: false, completed: true });
+    }
   } catch (err) {
-    console.error(`Google Drive upload failed for ${infoHash}:`, err?.message || err);
+    console.error(`Google Drive rolling upload failed for ${infoHash}:`, err?.message || err);
     activeJobs.set(infoHash, { torrent, uploading: false, error: err });
   }
 }
